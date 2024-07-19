@@ -26,7 +26,7 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 from utils.camera_utils import camera_nerfies_from_JSON
-
+from torch import load
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -132,10 +132,15 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path)
+        # main_folder = os.path.dirname(images_folder)
+        # depth_folder = os.path.join(main_folder, 'depth')
+        # depth_path = os.path.join(depth_folder, f"{image_name}.pt")
+        # depth= load(depth_path)
+        # depth = depth[:, :, :, 0]
 
         fid = int(image_name) / (num_frames - 1)
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=image_name, width=width, height=height, fid=fid)
+                            image_path=image_path, image_name=image_name, width=width, height=height, fid=fid)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
     return cam_infos
@@ -185,7 +190,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics,
                                            images_folder=os.path.join(path, reading_dir))
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
-
+    print(len(cam_infos))
     if eval:
         train_cam_infos = [c for idx, c in enumerate(
             cam_infos) if idx % llffhold != 0]

@@ -69,7 +69,16 @@ def generate_deformation(dataset: ModelParams, iteration: int):
         deform = DeformModel(dataset.is_blender, dataset.is_6dof)
         deform.load_weights(dataset.model_path)
 
-        xyz, rot, scal, opac = filter_gaussians_sphere(gaussians, (-0.8, 1.5, 8.85), 2)
+        # tree_garden - bad part
+        # xyz, rot, scal, opac = filter_gaussians_sphere(gaussians, (-0.8, 1.5, 8.85), 2)
+        
+        # moving_leaf - leaf (583)
+        # xyz, rot, scal, opac = filter_gaussians_sphere(gaussians, (0.8, 2, 6), 3)
+
+        # two_leaves - leaf
+        xyz, rot, scal, opac = filter_gaussians_sphere(gaussians, (-3, 2.4, 4), 3)
+
+        
         del gaussians
         del scene
 
@@ -118,7 +127,7 @@ def generate_deformation_save(dataset: ModelParams, iteration: int):
         deform = DeformModel(dataset.is_blender, dataset.is_6dof)
         deform.load_weights(dataset.model_path)
 
-        xyz, rot, scal, opac = filter_gaussians_sphere(gaussians, (-0.8, 1.5, 8.85), 2)
+        xyz, rot, scal, opac = filter_gaussians_sphere(gaussians, (-3, 2.4, 4), 3)
         del gaussians
         del scene
 

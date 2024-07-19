@@ -26,52 +26,75 @@ import numpy as np
 import time
 
 
+def filter_gaussians_sphere(gaussians: GaussianModel, center, radius):
+    x_c, y_c, z_c = center
+    xyz = gaussians.get_xyz.detach()
+    
+    distances_squared = (xyz[:, 0] - x_c) ** 2 + (xyz[:, 1] - y_c) ** 2 + (xyz[:, 2] - z_c) ** 2
+    
+    mask = distances_squared <= radius**2
+    gaussians.prune_from_mask(mask)
+    return gaussians
+
+
 def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views, gaussians, pipeline, background, deform):
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
-    depth_path = os.path.join(model_path, name, "ours_{}".format(iteration), "depth")
+    # depth_path = os.path.join(model_path, name, "ours_{}".format(iteration), "depth")
 
     makedirs(render_path, exist_ok=True)
     makedirs(gts_path, exist_ok=True)
-    makedirs(depth_path, exist_ok=True)
+    # makedirs(depth_path, exist_ok=True)
 
     t_list = []
+    gaussians = filter_gaussians_sphere(gaussians, (-3, 2.4, 4), 3)
 
-    for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
+    # gaussians = filter_gaussians_sphere(gaussians, (-0.8, 1.5, 8.85), 2)
+    N = len(views)
+    print('trying')
+    for idx, view_old in enumerate(tqdm(reversed(views), desc="Rendering progress")):
         if load2gpu_on_the_fly:
             view.load2device()
-        fid = view.fid
+        fid = N -view_old.fid
+        view.fid = view_old.fid
         xyz = gaussians.get_xyz
         time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
         d_xyz, d_rotation, d_scaling = deform.step(xyz.detach(), time_input)
         results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
         rendering = results["render"]
-        depth = results["depth"]
-        depth = depth / (depth.max() + 1e-5)
 
         gt = view.original_image[0:3, :, :]
         torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
         torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
-        torchvision.utils.save_image(depth, os.path.join(depth_path, '{0:05d}'.format(idx) + ".png"))
+        # torchvision.utils.save_image(depth, os.path.join(depth_path, '{0:05d}'.format(idx) + ".png"))
 
-    for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-        fid = view.fid
-        xyz = gaussians.get_xyz
-        time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
+    # images = []
+    # for file_name in sorted(os.listdir(render_path)):
+    #     if file_name.endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+    #         image_path = os.path.join(render_path, file_name)
+    #         images.append(imageio.imread(image_path))
 
-        torch.cuda.synchronize()
-        t_start = time.time()
+    # imageio.mimsave(render_path, images, fps=30)
+    # print(f"Video saved at {render_path}")
 
-        d_xyz, d_rotation, d_scaling = deform.step(xyz.detach(), time_input)
-        results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
+    # for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
+    #     fid = view.fid
+    #     xyz = gaussians.get_xyz
+    #     time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
 
-        torch.cuda.synchronize()
-        t_end = time.time()
-        t_list.append(t_end - t_start)
+    #     torch.cuda.synchronize()
+    #     t_start = time.time()
 
-    t = np.array(t_list[5:])
-    fps = 1.0 / t.mean()
-    print(f'Test FPS: \033[1;35m{fps:.5f}\033[0m, Num. of GS: {xyz.shape[0]}')
+    #     d_xyz, d_rotation, d_scaling = deform.step(xyz.detach(), time_input)
+    #     results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
+
+    #     torch.cuda.synchronize()
+    #     t_end = time.time()
+    #     t_list.append(t_end - t_start)
+
+    # t = np.array(t_list[5:])
+    # fps = 1.0 / t.mean()
+    # print(f'Test FPS: \033[1;35m{fps:.5f}\033[0m, Num. of GS: {xyz.shape[0]}')
 
 
 def interpolate_time(model_path, load2gpt_on_the_fly, is_6dof, name, iteration, views, gaussians, pipeline, background, deform):
@@ -325,10 +348,10 @@ def render_sets(dataset: ModelParams, iteration: int, pipeline: PipelineParams, 
                         scene.getTrainCameras(), gaussians, pipeline,
                         background, deform)
 
-        if not skip_test:
-            render_func(dataset.model_path, dataset.load2gpu_on_the_fly, dataset.is_6dof, "test", scene.loaded_iter,
-                        scene.getTestCameras(), gaussians, pipeline,
-                        background, deform)
+        # if not skip_test:
+        #     render_func(dataset.model_path, dataset.load2gpu_on_the_fly, dataset.is_6dof, "test", scene.loaded_iter,
+        #                 scene.getTestCameras(), gaussians, pipeline,
+        #                 background, deform)
 
 
 if __name__ == "__main__":

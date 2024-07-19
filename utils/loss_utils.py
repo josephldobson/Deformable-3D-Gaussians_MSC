@@ -74,3 +74,16 @@ def _ssim(img1, img2, window, window_size, channel, size_average=True):
         return ssim_map.mean()
     else:
         return ssim_map.mean(1).mean(1).mean(1)
+    
+    
+def scale_shift_invariant_depth_loss(D_p, D_t):
+    mu_p = torch.mean(D_p)
+    sigma_p = torch.std(D_p)
+    mu_t = torch.mean(D_t)
+    sigma_t = torch.std(D_t)
+
+    hat_D_p = (D_p - mu_p) / sigma_p
+    hat_D_t = (D_t - mu_t) / sigma_t
+
+    loss = torch.mean((hat_D_p - hat_D_t) ** 2)
+    return loss
