@@ -14,15 +14,29 @@ import imageio
 import numpy as np
 import time
 import sys
+import torch.nn as nn
 
 # python scripts/visualise_deformation.py -s '/home/joe/data/colmap/tree_garden' -m '/home/joe/repos/Deformable-3D-Gaussians_MSC/output/95456d7f-6' 
 
+class Encoder(nn.Module):
+    def __init__(self, input_dim: int, latent_dim: int):
+        super(Encoder, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 32)
+        self.fc2 = nn.Linear(32, latent_dim)
+        
+
+    def forward(self, x: torch.Tensor):
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+    
 
 def get_deformation(deform: DeformModel, xyz, frame: int):
     N = xyz.shape[0]
     t = torch.ones((N, 1)).to('cuda')*frame
     d_xyz, d_rotation, d_scaling = deform.step(xyz, t)
     return d_xyz, d_rotation
+
 
 def filter_gaussians_sphere(gaussians: GaussianModel, center: tuple, radius: float):
     
@@ -119,6 +133,65 @@ def generate_deformation(dataset: ModelParams, iteration: int):
         animate()
         mlab.show()
 
+
+
+def vis_latent_space(dataset: ModelParams, iteration: int):
+    with torch.no_grad():
+        gaussians = GaussianModel(dataset.sh_degree)
+        scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
+        num_frames = len(scene.getTrainCameras())
+
+        encoder = Encoder(input_dim=3, latent_dim=3).to('cuda')
+        encoder.load_state_dict(torch.load('encoder_model.pth'))
+        encoder.eval()
+
+        # tree_garden - bad part
+        # xyz, rot, scal, opac = filter_gaussians_sphere(gaussians, (-0.8, 1.5, 8.85), 2)
+        
+        # moving_leaf - leaf (583)
+        # xyz, rot, scal, opac = filter_gaussians_sphere(gaussians, (0.8, 2, 6), 3)
+
+        # two_leaves - leaf
+        xyz, rot, scal, opac = filter_gaussians_sphere(gaussians, (-3, 2.4, 4), 2)
+        del gaussians
+        del scene
+
+        new_xyz = encoder(xyz).detach().cpu().numpy()
+        xyz = xyz.cpu().numpy()
+
+        xyz -= np.mean(xyz, axis=0)
+        new_xyz -= np.mean(new_xyz, axis=0)
+        xn, yn, zn = new_xyz[:, 0], new_xyz[:, 1], new_xyz[:, 2]
+        xs, ys, zs = xyz[:, 0], xyz[:, 1], xyz[:, 2]
+        dx, dy, dz = xn - xs, yn - ys, zn - zs
+        s = opac.cpu().numpy().reshape(-1)
+        points = mlab.points3d(xs, ys, zs, s, scale_factor=0.02, color=(1, 0.1, 0))
+
+        mlab.xlabel('X-axis')
+        mlab.ylabel('Y-axis')
+        mlab.zlabel('Z-axis')
+        
+        @mlab.animate(delay=20)
+        def animate():
+            
+            frame = 0
+            while True:
+                points.mlab_source.set(x=xs + dx*frame/num_frames, y=ys + dy*frame/num_frames, z=zs + dz*frame/num_frames)
+                
+                frame += 1
+                if frame == num_frames:
+                    xs[:] = xs
+                    ys[:] = ys
+                    zs[:] = zs
+                    frame = 0
+                
+                yield
+
+        # Start animation
+        animate()
+        mlab.show()
+
+
 def generate_deformation_save(dataset: ModelParams, iteration: int):
     with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree)
@@ -180,4 +253,5 @@ if __name__ == "__main__":
     print("Saving " + args.model_path)
     safe_state(args.quiet)
 
-    generate_deformation_save(model.extract(args), args.iteration)
+    # generate_deformation_save(model.extract(args), args.iteration)
+    vis_latent_space(model.extract(args), args.iteration)

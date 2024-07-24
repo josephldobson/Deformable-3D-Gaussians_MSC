@@ -23,7 +23,8 @@ from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
 import imageio
 import numpy as np
-import time
+import math
+import copy
 
 
 def filter_gaussians_sphere(gaussians: GaussianModel, center, radius):
@@ -37,6 +38,37 @@ def filter_gaussians_sphere(gaussians: GaussianModel, center, radius):
     return gaussians
 
 
+def circular_view_generator(view, radius, num_steps):
+    """
+    Generator function to create views with num_steps positions rotating in a circle around the original T.
+
+    Args:
+        views: List of original Camera instances.
+        radius: Radius of the circle.
+        num_steps: Number of steps (views) in the circular path.
+
+    Yields:
+        New Camera instance with updated T position.
+    """
+    original_T = view.T
+    angle_step = 2 * math.pi / num_steps
+
+    for step in range(num_steps):
+        angle = step * angle_step
+        new_x = original_T[0] + radius * math.cos(angle)
+        new_y = original_T[1] + radius * math.sin(angle)
+        new_T = np.array([new_x, new_y, original_T[2]])
+
+        # Create a copy of the view and update its T position
+        new_view = copy.copy(view)
+        new_view.T = new_T
+
+        # Reset the extrinsic parameters with the new T
+        new_view.reset_extrinsic(new_view.R, new_view.T)
+        new_view.fid = torch.tensor(step/num_steps, device='cuda:0')
+        yield new_view
+
+
 def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views, gaussians, pipeline, background, deform):
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
@@ -46,17 +78,16 @@ def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views,
     makedirs(gts_path, exist_ok=True)
     # makedirs(depth_path, exist_ok=True)
 
-    t_list = []
-    gaussians = filter_gaussians_sphere(gaussians, (-3, 2.4, 4), 3)
+    # gaussians = filter_gaussians_sphere(gaussians, (-3, 2.4, 4), 3)
+    circular_views = list(circular_view_generator(views[10], 1, len(views)))
 
     # gaussians = filter_gaussians_sphere(gaussians, (-0.8, 1.5, 8.85), 2)
-    N = len(views)
-    print('trying')
-    for idx, view_old in enumerate(tqdm(reversed(views), desc="Rendering progress")):
+
+
+    for idx, view in enumerate(tqdm(circular_views, desc="Rendering progress")):
         if load2gpu_on_the_fly:
             view.load2device()
-        fid = N -view_old.fid
-        view.fid = view_old.fid
+        fid = view.fid
         xyz = gaussians.get_xyz
         time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
         d_xyz, d_rotation, d_scaling = deform.step(xyz.detach(), time_input)
@@ -66,35 +97,17 @@ def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views,
         gt = view.original_image[0:3, :, :]
         torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
         torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
-        # torchvision.utils.save_image(depth, os.path.join(depth_path, '{0:05d}'.format(idx) + ".png"))
+    del gaussians
+    del circular_views
 
-    # images = []
-    # for file_name in sorted(os.listdir(render_path)):
-    #     if file_name.endswith(('.png', '.jpg', '.jpeg', '.bmp')):
-    #         image_path = os.path.join(render_path, file_name)
-    #         images.append(imageio.imread(image_path))
+    images = []
+    for file_name in sorted(os.listdir(render_path)):
+        if file_name.endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+            image_path = os.path.join(render_path, file_name)
+            images.append(imageio.imread(image_path))
 
-    # imageio.mimsave(render_path, images, fps=30)
-    # print(f"Video saved at {render_path}")
-
-    # for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-    #     fid = view.fid
-    #     xyz = gaussians.get_xyz
-    #     time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
-
-    #     torch.cuda.synchronize()
-    #     t_start = time.time()
-
-    #     d_xyz, d_rotation, d_scaling = deform.step(xyz.detach(), time_input)
-    #     results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
-
-    #     torch.cuda.synchronize()
-    #     t_end = time.time()
-    #     t_list.append(t_end - t_start)
-
-    # t = np.array(t_list[5:])
-    # fps = 1.0 / t.mean()
-    # print(f'Test FPS: \033[1;35m{fps:.5f}\033[0m, Num. of GS: {xyz.shape[0]}')
+    imageio.mimsave(os.path.join(render_path, 'video.mp4'), images, fps=30)
+    print(f"Video saved at {render_path}")
 
 
 def interpolate_time(model_path, load2gpt_on_the_fly, is_6dof, name, iteration, views, gaussians, pipeline, background, deform):
