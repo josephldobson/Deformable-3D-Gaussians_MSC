@@ -19,8 +19,7 @@ col = col.detach()
 min_vals = col.min(dim=0)[0]
 max_vals = col.max(dim=0)[0]
 col = (col - min_vals) / (max_vals - min_vals)
-col = col % 0.5
-col = col * 2
+col = (col % 0.5) * 2
 col = col.numpy()
 
 n = non_static_points.shape[0]

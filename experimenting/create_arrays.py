@@ -2,7 +2,6 @@ import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from mayavi import mlab
 import torch
 from scene import Scene, DeformModel
 
@@ -10,12 +9,8 @@ from utils.general_utils import safe_state
 from argparse import ArgumentParser
 from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
-import imageio
 import numpy as np
-import time
 import sys
-
-# python scripts/visualise_deformation.py -s '/home/joe/data/colmap/tree_garden' -m '/home/joe/repos/Deformable-3D-Gaussians_MSC/output/95456d7f-6' 
 
 
 def get_deformation(deform: DeformModel, xyz, frame: int):
@@ -35,7 +30,6 @@ def generate_deformation_save(dataset: ModelParams, iteration: int):
 
         num_frames = len(scene.getTrainCameras())
         xyz = gaussians.get_xyz
-        scales = 
         np.save('xyz.npy', xyz.cpu().numpy())
 
         # del scene

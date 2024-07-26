@@ -95,7 +95,7 @@ class GUI:
 
         self.tb_writer = prepare_output_and_logger(dataset)
         self.gaussians = GaussianModel(dataset.sh_degree)
-        self.deform = DeformModel(is_blender=dataset.is_blender, is_6dof=dataset.is_6dof)
+        self.deform = DeformModel()
         self.deform.train_setting(opt)
 
         self.scene = Scene(dataset, self.gaussians)
@@ -556,16 +556,16 @@ class GUI:
             viewpoint_cam.load2device()
         fid = viewpoint_cam.fid
 
-        if self.iteration < self.opt.warm_up:
-            d_xyz, d_rotation, d_scaling = 0.0, 0.0, 0.0
-        else:
-            N = self.gaussians.get_xyz.shape[0]
-            time_input = fid.unsqueeze(0).expand(N, -1)
-            ast_noise = 0 if self.dataset.is_blender else torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * self.smooth_term(self.iteration)
-            d_xyz, d_rotation, d_scaling = self.deform.step(self.gaussians.get_xyz.detach(), time_input + ast_noise)
+        # if self.iteration < self.opt.warm_up:
+        #     d_xyz, d_rotation, d_scaling = 0.0, 0.0, 0.0
+        # else:
+        N = self.gaussians.get_xyz.shape[0]
+        time_input = fid.unsqueeze(0).expand(N, -1)
+        ast_noise = torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * self.smooth_term(self.iteration)
+        d_xyz, d_rotation, d_scaling, latent = self.deform.step(self.gaussians.get_xyz.detach(), time_input + ast_noise)
 
         # Render
-        render_pkg_re = render(viewpoint_cam, self.gaussians, self.pipe, self.background, d_xyz, d_rotation, d_scaling, self.dataset.is_6dof)
+        render_pkg_re = render(viewpoint_cam, self.gaussians, self.pipe, self.background, d_xyz, d_rotation, d_scaling)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg_re["render"], render_pkg_re[
             "viewspace_points"], render_pkg_re["visibility_filter"], render_pkg_re["radii"]
         # depth = render_pkg_re["depth"]
@@ -669,9 +669,9 @@ class GUI:
         else:
             N = self.gaussians.get_xyz.shape[0]
             time_input = fid.unsqueeze(0).expand(N, -1)
-            d_xyz, d_rotation, d_scaling = self.deform.step(self.gaussians.get_xyz.detach(), time_input)
+            d_xyz, d_rotation, d_scaling, latent = self.deform.step(self.gaussians.get_xyz.detach(), time_input)
         
-        out = render(viewpoint_camera=cur_cam, pc=self.gaussians, pipe=self.pipe, bg_color=self.background, d_xyz=d_xyz, d_rotation=d_rotation, d_scaling=d_scaling, is_6dof=self.dataset.is_6dof)
+        out = render(viewpoint_camera=cur_cam, pc=self.gaussians, pipe=self.pipe, bg_color=self.background, d_xyz=d_xyz, d_rotation=d_rotation, d_scaling=d_scaling)
 
         buffer_image = out[self.mode]  # [3, H, W]
 

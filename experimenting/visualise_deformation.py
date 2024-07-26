@@ -34,7 +34,7 @@ class Encoder(nn.Module):
 def get_deformation(deform: DeformModel, xyz, frame: int):
     N = xyz.shape[0]
     t = torch.ones((N, 1)).to('cuda')*frame
-    d_xyz, d_rotation, d_scaling = deform.step(xyz, t)
+    d_xyz, d_rotation, d_scaling, latent = deform.step(xyz, t)
     return d_xyz, d_rotation
 
 
