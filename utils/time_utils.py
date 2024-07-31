@@ -22,11 +22,11 @@ class DeformationNetwork(nn.Module):
         self.W = W
         self.input_d = 8*N_freqs
 
-        self.encoder = nn.Sequential(
-            nn.Linear(3, 64),
-            nn.ReLU(),
-            nn.Linear(64, latent_dim),
-        )
+        # self.encoder = nn.Sequential(
+        #     nn.Linear(3, 64),
+        #     nn.ReLU(),
+        #     nn.Linear(64, latent_dim),
+        # )
         self.sin_cos_transform = SinCosTransform(N_freqs=10)
 
         self.deformation_network = nn.ModuleList(
@@ -40,8 +40,8 @@ class DeformationNetwork(nn.Module):
         self.sca_shift = nn.Linear(self.W, 3)
 
     def forward(self, xyz, t):
-        latent = self.encoder(xyz)
-        sin_cos = self.sin_cos_transform(torch.concat((latent, t), dim=1))
+        # latent = self.encoder(xyz)
+        sin_cos = self.sin_cos_transform(torch.concat((xyz, t), dim=1))
         h = torch.clone(sin_cos)
         for i, layer in enumerate(self.deformation_network):
             h = layer(h)
@@ -53,4 +53,4 @@ class DeformationNetwork(nn.Module):
         rot = self.rot_shift(h)
         sca = self.sca_shift(h)
 
-        return xyz, rot, sca, latent
+        return xyz, rot, sca, 0
