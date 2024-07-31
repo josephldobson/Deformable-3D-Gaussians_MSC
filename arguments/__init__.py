@@ -60,6 +60,7 @@ class ModelParams(ParamGroup):
         self.load2gpu_on_the_fly = False
         self.is_blender = False
         self.is_6dof = False
+        self.max_gaussians = 1_000_000
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):

@@ -22,6 +22,8 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+import torch.nn as nn
+
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -29,6 +31,18 @@ try:
     TENSORBOARD_FOUND = True
 except ImportError:
     TENSORBOARD_FOUND = False
+
+
+class Encoder(nn.Module):
+    def __init__(self, input_dim: int, latent_dim: int):
+        super(Encoder, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 64)
+        self.fc2 = nn.Linear(64, latent_dim)
+
+    def forward(self, x: torch.Tensor):
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations):
@@ -39,7 +53,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations):
 
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
-
+    
+    encoder = Encoder(input_dim=3, latent_dim=3)
+    encoder.load_state_dict(torch.load('/home/joe/repos/Deformable-3D-Gaussians_MSC/experimenting/data/encoder_model_3.pth'))
+    encoder.eval()
+    encoder.to('cuda')
+    
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
@@ -78,7 +97,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations):
             time_input = fid.unsqueeze(0).expand(N, -1)
 
             ast_noise = torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * smooth_term(iteration)
-            latent, d_xyz, d_rotation, latent = deform.step(gaussians.get_xyz.detach(), time_input + ast_noise)
+            latent, d_xyz, d_rotation, latent = deform.step(encoder(gaussians.get_xyz.detach()), time_input + ast_noise)
             d_scaling = 0
 
         # Render
