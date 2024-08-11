@@ -13,7 +13,7 @@ import os
 import time
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, ssim, kl_divergence
+from utils.loss_utils import l1_loss, ssim, scale_shift_invariant_depth_loss
 from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel, DeformModel
@@ -28,7 +28,7 @@ import math
 from utils.gui_utils import orbit_camera, OrbitCamera
 import numpy as np
 import dearpygui.dearpygui as dpg
-import torch.nn as nn
+
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -36,18 +36,6 @@ try:
     TENSORBOARD_FOUND = True
 except ImportError:
     TENSORBOARD_FOUND = False
-
-
-class Encoder(nn.Module):
-    def __init__(self, input_dim: int, latent_dim: int):
-        super(Encoder, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 64)
-        self.fc2 = nn.Linear(64, latent_dim)
-
-    def forward(self, x: torch.Tensor):
-        x = torch.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x*10
 
 
 def getProjectionMatrix(znear, zfar, fovX, fovY):
@@ -107,13 +95,8 @@ class GUI:
 
         self.tb_writer = prepare_output_and_logger(dataset)
         self.gaussians = GaussianModel(dataset.sh_degree)
-        self.deform = DeformModel()
+        self.deform = DeformModel(is_blender=dataset.is_blender, is_6dof=dataset.is_6dof)
         self.deform.train_setting(opt)
-
-        self.encoder = Encoder(input_dim=3, latent_dim=3)
-        self.encoder.load_state_dict(torch.load('/home/joe/repos/Deformable-3D-Gaussians_MSC/experimenting/data/encoder_model_3.pth'))
-        self.encoder.eval()
-        self.encoder.to('cuda')
 
         self.scene = Scene(dataset, self.gaussians)
         self.gaussians.training_setup(opt)
@@ -573,27 +556,24 @@ class GUI:
             viewpoint_cam.load2device()
         fid = viewpoint_cam.fid
 
-        # if self.iteration < self.opt.warm_up
-        #     d_xyz, d_rotation, d_scaling = 0.0, 0.0, 0.0
-        # else:
-        N = self.gaussians.get_xyz.shape[0]
-        time_input = fid.unsqueeze(0).expand(N, -1)
-        ast_noise = torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * self.smooth_term(self.iteration)
-
-        new_xyz = 3 * self.encoder.forward(self.gaussians.get_xyz.detach())
-        d_scaling = 0
-        d_xyz, d_rotation = self.deform.step(new_xyz, time_input + ast_noise)
+        if self.iteration < self.opt.warm_up:
+            d_xyz, d_rotation, d_scaling = 0.0, 0.0, 0.0
+        else:
+            N = self.gaussians.get_xyz.shape[0]
+            time_input = fid.unsqueeze(0).expand(N, -1)
+            ast_noise = 0 if self.dataset.is_blender else torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * self.smooth_term(self.iteration)
+            d_xyz, d_rotation, d_scaling = self.deform.step(self.gaussians.get_xyz.detach(), time_input + ast_noise)
 
         # Render
-        render_pkg_re = render(viewpoint_cam, self.gaussians, self.pipe, self.background, d_xyz, d_rotation, d_scaling)
+        render_pkg_re = render(viewpoint_cam, self.gaussians, self.pipe, self.background, d_xyz, d_rotation, d_scaling, self.dataset.is_6dof)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg_re["render"], render_pkg_re[
             "viewspace_points"], render_pkg_re["visibility_filter"], render_pkg_re["radii"]
-        # depth = render_pkg_re["depth"]
+        depth = render_pkg_re["depth"]
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
-        loss = (1.0 - self.opt.lambda_dssim) * Ll1 + self.opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        loss = (1.0 - self.opt.lambda_dssim) * Ll1 + self.opt.lambda_dssim * (1.0 - ssim(image, gt_image)) + 0.2 * scale_shift_invariant_depth_loss(viewpoint_cam.depth, depth)
         loss.backward()
 
         self.iter_end.record()
@@ -614,7 +594,7 @@ class GUI:
             self.gaussians.max_radii2D[visibility_filter] = torch.max(self.gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
 
             # Log and save
-            cur_psnr = training_report(self.tb_writer, self.iteration, Ll1, loss, l1_loss, self.iter_start.elapsed_time(self.iter_end), self.testing_iterations, self.scene, render, (self.pipe, self.background), self.deform, self.encoder, self.dataset.load2gpu_on_the_fly, self.dataset.is_6dof)
+            cur_psnr = training_report(self.tb_writer, self.iteration, Ll1, loss, l1_loss, self.iter_start.elapsed_time(self.iter_end), self.testing_iterations, self.scene, render, (self.pipe, self.background), self.deform, self.dataset.load2gpu_on_the_fly, self.dataset.is_6dof)
             if self.iteration in self.testing_iterations:
                 if cur_psnr.item() > self.best_psnr:
                     self.best_psnr = cur_psnr.item()
@@ -689,11 +669,9 @@ class GUI:
         else:
             N = self.gaussians.get_xyz.shape[0]
             time_input = fid.unsqueeze(0).expand(N, -1)
-            with torch.no_grad():
-                new_xyz = self.encoder.forward(self.gaussians.get_xyz.detach()) * 3
-            d_xyz, d_rotation = self.deform.step(new_xyz, time_input)
-        d_scaling = 0
-        out = render(viewpoint_camera=cur_cam, pc=self.gaussians, pipe=self.pipe, bg_color=self.background, d_xyz=d_xyz, d_rotation=d_rotation, d_scaling=d_scaling)
+            d_xyz, d_rotation, d_scaling = self.deform.step(self.gaussians.get_xyz.detach(), time_input)
+        
+        out = render(viewpoint_camera=cur_cam, pc=self.gaussians, pipe=self.pipe, bg_color=self.background, d_xyz=d_xyz, d_rotation=d_rotation, d_scaling=d_scaling, is_6dof=self.dataset.is_6dof)
 
         buffer_image = out[self.mode]  # [3, H, W]
 

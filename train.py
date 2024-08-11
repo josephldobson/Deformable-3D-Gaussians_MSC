@@ -97,7 +97,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations):
             time_input = fid.unsqueeze(0).expand(N, -1)
 
             ast_noise = torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * smooth_term(iteration)
-            latent, d_xyz, d_rotation, latent = deform.step(encoder(gaussians.get_xyz.detach()), time_input + ast_noise)
+            d_xyz, d_rotation = deform.step(encoder(gaussians.get_xyz.detach()), time_input + ast_noise)
             d_scaling = 0
 
         # Render
@@ -192,7 +192,7 @@ def prepare_output_and_logger(args):
 
 
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene: Scene, renderFunc,
-                    renderArgs, deform, load2gpu_on_the_fly, is_6dof=False):
+                    renderArgs, deform, encoder, load2gpu_on_the_fly, is_6dof=False):
     if tb_writer:
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
@@ -217,7 +217,10 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     fid = viewpoint.fid
                     xyz = scene.gaussians.get_xyz
                     time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
-                    d_xyz, d_rotation, d_scaling, latent = deform.step(xyz.detach(), time_input)
+                    with torch.no_grad():
+                        new_xyz = encoder.forward(scene.gaussians.get_xyz.detach()) * 3
+                    d_xyz, d_rotation = deform.step(new_xyz, time_input)
+                    d_scaling = 0
                     image = torch.clamp(
                         renderFunc(viewpoint, scene.gaussians, *renderArgs, d_xyz, d_rotation, d_scaling, is_6dof)["render"],
                         0.0, 1.0)
