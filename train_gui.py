@@ -579,8 +579,8 @@ class GUI:
         loss = (1.0 - self.opt.lambda_dssim) * Ll1 + self.opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss.backward()
 
-        if self.iteration < self.opt.warm_up:
-            
+        # if self.iteration < self.opt.warm_up:
+
 
         self.iter_end.record()
 

@@ -44,7 +44,7 @@ def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views,
         xyz = gaussians.get_xyz
         time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
         d_xyz, d_rotation, d_scaling = deform.step(xyz.detach(), time_input)
-        results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
+        results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling)
         rendering = results["render"]
         depth = results["depth"]
         depth = depth / (depth.max() + 1e-5)
@@ -137,7 +137,8 @@ def interpolate_view(model_path, load2gpt_on_the_fly, is_6dof, name, iteration, 
 
         xyz = gaussians.get_xyz
         time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
-        d_xyz, d_rotation, d_scaling = timer.step(xyz.detach(), time_input)
+        d_xyz, d_rotation = timer.step(xyz.detach(), time_input)
+        d_scaling = 0
         results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
         rendering = results["render"]
         renderings.append(to8b(rendering.cpu().numpy()))
