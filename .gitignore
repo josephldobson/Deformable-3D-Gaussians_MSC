@@ -9,3 +9,5 @@ screenshots
 .idea
 latent_space/data/*
 experimenting/data/*
+submodules/simple-knn/simple_knn.egg-info/*
+submodules/simple-knn/build/*

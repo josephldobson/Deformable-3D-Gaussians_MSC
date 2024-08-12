@@ -38,18 +38,6 @@ except ImportError:
     TENSORBOARD_FOUND = False
 
 
-class Encoder(nn.Module):
-    def __init__(self, input_dim: int, latent_dim: int):
-        super(Encoder, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 64)
-        self.fc2 = nn.Linear(64, latent_dim)
-
-    def forward(self, x: torch.Tensor):
-        x = torch.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x*10
-
-
 def getProjectionMatrix(znear, zfar, fovX, fovY):
     tanHalfFovY = math.tan((fovY / 2))
     tanHalfFovX = math.tan((fovX / 2))
@@ -109,11 +97,6 @@ class GUI:
         self.gaussians = GaussianModel(dataset.sh_degree)
         self.deform = DeformModel()
         self.deform.train_setting(opt)
-
-        self.encoder = Encoder(input_dim=3, latent_dim=3)
-        self.encoder.load_state_dict(torch.load('/home/joe/repos/Deformable-3D-Gaussians_MSC/experimenting/data/encoder_model_3.pth'))
-        self.encoder.eval()
-        self.encoder.to('cuda')
 
         self.scene = Scene(dataset, self.gaussians)
         self.gaussians.training_setup(opt)
@@ -573,16 +556,16 @@ class GUI:
             viewpoint_cam.load2device()
         fid = viewpoint_cam.fid
 
-        # if self.iteration < self.opt.warm_up
-        #     d_xyz, d_rotation, d_scaling = 0.0, 0.0, 0.0
-        # else:
-        N = self.gaussians.get_xyz.shape[0]
-        time_input = fid.unsqueeze(0).expand(N, -1)
-        ast_noise = torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * self.smooth_term(self.iteration)
+        if self.iteration < self.opt.warm_up:
+            d_xyz, d_rotation, d_scaling = 0.0, 0.0, 0.0
+        else:
+            N = self.gaussians.get_xyz.shape[0]
+            time_input = fid.unsqueeze(0).expand(N, -1)
+            ast_noise = torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * self.smooth_term(self.iteration)
 
-        new_xyz = 3 * self.encoder.forward(self.gaussians.get_xyz.detach())
-        d_scaling = 0
-        d_xyz, d_rotation = self.deform.step(new_xyz, time_input + ast_noise)
+            new_xyz = 3 * self.encoder.forward(self.gaussians.get_xyz.detach())
+            d_scaling = 0
+            d_xyz, d_rotation, latent = self.deform.step(new_xyz, time_input + ast_noise)
 
         # Render
         render_pkg_re = render(viewpoint_cam, self.gaussians, self.pipe, self.background, d_xyz, d_rotation, d_scaling)
@@ -595,6 +578,9 @@ class GUI:
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - self.opt.lambda_dssim) * Ll1 + self.opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss.backward()
+
+        if self.iteration < self.opt.warm_up:
+            
 
         self.iter_end.record()
 
