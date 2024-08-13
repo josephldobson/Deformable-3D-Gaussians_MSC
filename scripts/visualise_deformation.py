@@ -40,7 +40,7 @@ def get_deformation(deform: DeformModel, xyz, frame: int):
 
 def filter_gaussians_sphere(gaussians: GaussianModel, center: tuple, radius: float):
     
-    N = 60_000 # max gaussians my memory can handle
+    N = 600_000 # max gaussians my memory can handle
     xyz = gaussians.get_xyz.detach()
     rot = gaussians.get_rotation.detach()
     scal = gaussians.get_scaling.detach()
