@@ -25,6 +25,19 @@ import imageio
 import numpy as np
 import math
 import copy
+import torch.nn as nn
+
+
+class Encoder(nn.Module):
+    def __init__(self, input_dim: int, latent_dim: int):
+        super(Encoder, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 64)
+        self.fc2 = nn.Linear(64, latent_dim)
+
+    def forward(self, x: torch.Tensor):
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x*10
 
 
 def filter_gaussians_sphere(gaussians: GaussianModel, center, radius):
@@ -74,11 +87,16 @@ def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views,
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
     # depth_path = os.path.join(model_path, name, "ours_{}".format(iteration), "depth")
 
+    encoder = Encoder(input_dim=3, latent_dim=3)
+    encoder.load_state_dict(torch.load('/home/joe/repos/Deformable-3D-Gaussians_MSC/experimenting/data/encoder_model_3.pth'))
+    encoder.eval()
+    encoder.to('cuda')
+
     makedirs(render_path, exist_ok=True)
     makedirs(gts_path, exist_ok=True)
     # makedirs(depth_path, exist_ok=True)
 
-    # gaussians = filter_gaussians_sphere(gaussians, (-3, 2.4, 4), 3)
+    gaussians = filter_gaussians_sphere(gaussians, (-3, 2.4, 4), 3)
     circular_views = list(circular_view_generator(views[10], 1, len(views)))
 
     # gaussians = filter_gaussians_sphere(gaussians, (-0.8, 1.5, 8.85), 2)
@@ -89,8 +107,12 @@ def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views,
             view.load2device()
         fid = view.fid
         xyz = gaussians.get_xyz
+        print(xyz.shape)
         time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
-        d_xyz, d_rotation, d_scaling = deform.step(xyz.detach(), time_input)
+        new_xyz = 3 * encoder.forward(gaussians.get_xyz.detach())
+        d_scaling = 0
+        print(gaussians.get_)
+        d_xyz, d_rotation = deform.step(new_xyz, time_input)
         results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
         rendering = results["render"]
 
@@ -343,23 +365,9 @@ def render_sets(dataset: ModelParams, iteration: int, pipeline: PipelineParams, 
         bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
-        if mode == "render":
-            render_func = render_set
-        elif mode == "time":
-            render_func = interpolate_time
-        elif mode == "view":
-            render_func = interpolate_view
-        elif mode == "pose":
-            render_func = interpolate_poses
-        elif mode == "original":
-            render_func = interpolate_view_original
-        else:
-            render_func = interpolate_all
-
-        if not skip_train:
-            render_func(dataset.model_path, dataset.load2gpu_on_the_fly, dataset.is_6dof, "train", scene.loaded_iter,
-                        scene.getTrainCameras(), gaussians, pipeline,
-                        background, deform)
+        render_set(dataset.model_path, dataset.load2gpu_on_the_fly, dataset.is_6dof, "train", scene.loaded_iter,
+                    scene.getTrainCameras(), gaussians, pipeline,
+                    background, deform)
 
         # if not skip_test:
         #     render_func(dataset.model_path, dataset.load2gpu_on_the_fly, dataset.is_6dof, "test", scene.loaded_iter,

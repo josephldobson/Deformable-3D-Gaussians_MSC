@@ -24,6 +24,19 @@ from gaussian_renderer import GaussianModel
 import imageio
 import numpy as np
 import time
+import torch.nn as nn
+
+
+class Encoder(nn.Module):
+    def __init__(self, input_dim: int, latent_dim: int):
+        super(Encoder, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 64)
+        self.fc2 = nn.Linear(64, latent_dim)
+
+    def forward(self, x: torch.Tensor):
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x*10
 
 
 def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views, gaussians, pipeline, background, deform):
@@ -35,6 +48,11 @@ def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views,
     makedirs(gts_path, exist_ok=True)
     makedirs(depth_path, exist_ok=True)
 
+    encoder = Encoder(input_dim=3, latent_dim=3)
+    encoder.load_state_dict(torch.load('/home/joe/repos/Deformable-3D-Gaussians_MSC/experimenting/data/encoder_model_3.pth'))
+    encoder.eval()
+    encoder.to('cuda')
+
     t_list = []
 
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
@@ -43,7 +61,11 @@ def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views,
         fid = view.fid
         xyz = gaussians.get_xyz
         time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
-        d_xyz, d_rotation, d_scaling = deform.step(xyz.detach(), time_input)
+
+        # new_xyz = encoder.forward(gaussians.get_xyz.detach())
+        # d_scaling = 0
+        # d_xyz, d_rotation = deform.step(new_xyz, time_input)
+        d_xyz, d_rotation, d_scaling = 0, 0, 0
         results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
         rendering = results["render"]
         depth = results["depth"]
@@ -228,8 +250,8 @@ def interpolate_poses(model_path, load2gpt_on_the_fly, is_6dof, name, iteration,
 
         xyz = gaussians.get_xyz
         time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
-        d_xyz, d_rotation, d_scaling = timer.step(xyz.detach(), time_input)
-
+        d_xyz, d_rotation = timer.step(xyz.detach(), time_input)
+        d_scaling = 0
         results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
         rendering = results["render"]
         renderings.append(to8b(rendering.cpu().numpy()))
