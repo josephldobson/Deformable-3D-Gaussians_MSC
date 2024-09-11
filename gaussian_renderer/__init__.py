@@ -67,14 +67,14 @@ def render(viewpoint_camera, pc: GaussianModel, pipe, bg_color: torch.Tensor, d_
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
-    if is_6dof:
-        if torch.is_tensor(d_xyz) is False:
-            means3D = pc.get_xyz
-        else:
-            means3D = from_homogenous(
-                torch.bmm(d_xyz, to_homogenous(pc.get_xyz).unsqueeze(-1)).squeeze(-1))
-    else:
-        means3D = pc.get_xyz + d_xyz
+    # if is_6dof:
+    #     if torch.is_tensor(d_xyz) is False:
+    #         means3D = pc.get_xyz
+    #     else:
+    #         means3D = from_homogenous(
+    #             torch.bmm(d_xyz, to_homogenous(pc.get_xyz).unsqueeze(-1)).squeeze(-1))
+
+    means3D = pc.get_xyz + d_xyz
     opacity = pc.get_opacity
 
     # If precomputed 3d covariance is provided, use it. If not, then it will be computed from
@@ -87,6 +87,7 @@ def render(viewpoint_camera, pc: GaussianModel, pipe, bg_color: torch.Tensor, d_
     else:
         scales = pc.get_scaling + d_scaling
         rotations = pc.get_rotation + d_rotation
+        rotations = torch.nn.functional.normalize(rotations, p=2, dim=1)
 
     # If precomputed colors are provided, use them. Otherwise, if it is desired to precompute colors
     # from SHs in Python, do it. If not, then SH -> RGB conversion will be done by rasterizer.

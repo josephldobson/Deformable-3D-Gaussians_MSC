@@ -56,7 +56,7 @@ class Embedder:
 
 
 class DeformNetwork(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, output_ch=59, multires=10, is_blender=False, is_6dof=False):
+    def __init__(self, D=14, W=512, input_ch=3, output_ch=59, multires=10, is_blender=False, is_6dof=False):
         super(DeformNetwork, self).__init__()
         self.D = D
         self.W = W
@@ -121,6 +121,7 @@ class DeformNetwork(nn.Module):
             v = v / theta + 1e-5
             screw_axis = torch.cat([w, v], dim=-1)
             d_xyz = exp_se3(screw_axis, theta)
+
         else:
             d_xyz = self.gaussian_warp(h)
         scaling = self.gaussian_scaling(h)

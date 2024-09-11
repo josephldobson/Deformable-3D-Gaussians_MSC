@@ -100,7 +100,7 @@ def getNerfppNorm(cam_info):
 
 def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
     cam_infos = []
-    num_frames = len(cam_extrinsics)
+    num_frames = max([int(f.split('.')[0]) for f in os.listdir(images_folder)])
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
         # the exact output you're looking for:

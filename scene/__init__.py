@@ -60,6 +60,7 @@ class Scene:
             print("Found calibration_full.json, assuming Dynamic-360 data set!")
             scene_info = sceneLoadTypeCallbacks["dynamic360"](args.source_path)
         else:
+            print(os.path.join(args.source_path, "sparse"))
             assert False, "Could not recognize scene type!"
 
         if not self.loaded_iter:
@@ -99,6 +100,9 @@ class Scene:
                                     og_number_points=len(scene_info.point_cloud.points))
         else:
             self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
+        
+        self.total_timesteps = len(os.listdir(os.path.join(args.source_path, 'input')))
+        print(self.total_timesteps)
 
     def save(self, iteration):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))

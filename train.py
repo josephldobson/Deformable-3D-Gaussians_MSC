@@ -22,6 +22,7 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+from utils.regularisation_utils import rigidity_loss
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -45,6 +46,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations):
 
     iter_start = torch.cuda.Event(enable_timing=True)
     iter_end = torch.cuda.Event(enable_timing=True)
+
+    total_frame = scene.total_timesteps
+    time_interval = 1 / total_frame
 
     viewpoint_stack = None
     ema_loss_for_log = 0.0
@@ -79,14 +83,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations):
         if not viewpoint_stack:
             viewpoint_stack = scene.getTrainCameras().copy()
 
-        total_frame = len(viewpoint_stack)
-        time_interval = 1 / total_frame
-
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
         if dataset.load2gpu_on_the_fly:
             viewpoint_cam.load2device()
         fid = viewpoint_cam.fid
-
         if iteration < opt.warm_up:
             d_xyz, d_rotation, d_scaling = 0.0, 0.0, 0.0
         else:
@@ -103,9 +103,22 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations):
         # depth = render_pkg_re["depth"]
 
         # Loss
+
+
+
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        
+        rigid_warmup = 10_000
+        rigid = True
+        if rigid and iteration > rigid_warmup and 0 < fid < 1 and iteration > opt.warm_up:
+            time_input = time_input - time_interval
+            xyz_t0, _, _ = deform.step(gaussians.get_xyz.detach(), time_input + ast_noise)
+
+            rigid_loss = rigidity_loss(xyz_t0, d_xyz)
+            loss += rigid_loss
+
         loss.backward()
 
         iter_end.record()

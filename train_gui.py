@@ -26,6 +26,7 @@ from arguments import ModelParams, PipelineParams, OptimizationParams
 from train import training_report
 import math
 from utils.gui_utils import orbit_camera, OrbitCamera
+from utils.regularisation_utils import rigidity_loss
 import numpy as np
 import dearpygui.dearpygui as dpg
 
@@ -540,6 +541,8 @@ class GUI:
 
         self.iter_start.record()
 
+        total_frame = self.scene.total_timesteps
+        time_interval = 1 / total_frame
         # Every 1000 its we increase the levels of SH up to a maximum degree
         if self.iteration % 1000 == 0:
             self.gaussians.oneupSHdegree()
@@ -547,10 +550,7 @@ class GUI:
         # Pick a random Camera
         if not self.viewpoint_stack:
             self.viewpoint_stack = self.scene.getTrainCameras().copy()
-
-        total_frame = len(self.viewpoint_stack)
-        time_interval = 1 / total_frame
-
+        
         viewpoint_cam = self.viewpoint_stack.pop(randint(0, len(self.viewpoint_stack) - 1))
         if self.dataset.load2gpu_on_the_fly:
             viewpoint_cam.load2device()
@@ -561,6 +561,7 @@ class GUI:
         else:
             N = self.gaussians.get_xyz.shape[0]
             time_input = fid.unsqueeze(0).expand(N, -1)
+
             ast_noise = 0 if self.dataset.is_blender else torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * self.smooth_term(self.iteration)
             d_xyz, d_rotation, d_scaling = self.deform.step(self.gaussians.get_xyz.detach(), time_input + ast_noise)
 
@@ -570,10 +571,22 @@ class GUI:
             "viewspace_points"], render_pkg_re["visibility_filter"], render_pkg_re["radii"]
         # depth = render_pkg_re["depth"]
 
-        # Loss
+
+
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - self.opt.lambda_dssim) * Ll1 + self.opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        
+        rigid_warmup = 3_000
+        rigid = False
+        if rigid and self.iteration > rigid_warmup and 0 < fid < 1 and self.iteration > self.opt.warm_up:
+            time_input = time_input - time_interval
+            xyz_t0, _, _ = self.deform.step(self.gaussians.get_xyz.detach(), time_input + ast_noise)
+
+            rigid_loss = rigidity_loss(xyz_t0, d_xyz)
+            print(rigid_loss)
+            loss += rigid_loss
+
         loss.backward()
 
         self.iter_end.record()
@@ -670,7 +683,8 @@ class GUI:
             N = self.gaussians.get_xyz.shape[0]
             time_input = fid.unsqueeze(0).expand(N, -1)
             d_xyz, d_rotation, d_scaling = self.deform.step(self.gaussians.get_xyz.detach(), time_input)
-        
+
+
         out = render(viewpoint_camera=cur_cam, pc=self.gaussians, pipe=self.pipe, bg_color=self.background, d_xyz=d_xyz, d_rotation=d_rotation, d_scaling=d_scaling, is_6dof=self.dataset.is_6dof)
 
         buffer_image = out[self.mode]  # [3, H, W]
