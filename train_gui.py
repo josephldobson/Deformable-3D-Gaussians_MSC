@@ -29,6 +29,10 @@ from utils.gui_utils import orbit_camera, OrbitCamera
 from utils.regularisation_utils import rigidity_loss
 import numpy as np
 import dearpygui.dearpygui as dpg
+from sklearn.neighbors import NearestNeighbors
+from utils.rigidity_utils import compute_d_quat
+
+
 
 
 try:
@@ -564,6 +568,7 @@ class GUI:
 
             ast_noise = 0 if self.dataset.is_blender else torch.randn(1, 1, device='cuda').expand(N, -1) * time_interval * self.smooth_term(self.iteration)
             d_xyz, d_rotation, d_scaling = self.deform.step(self.gaussians.get_xyz.detach(), time_input + ast_noise)
+            d_rotation = compute_d_quat(self.gaussians.get_xyz.detach(), d_xyz.detach(), 4)
 
         # Render
         render_pkg_re = render(viewpoint_cam, self.gaussians, self.pipe, self.background, d_xyz, d_rotation, d_scaling, self.dataset.is_6dof)
@@ -571,21 +576,10 @@ class GUI:
             "viewspace_points"], render_pkg_re["visibility_filter"], render_pkg_re["radii"]
         # depth = render_pkg_re["depth"]
 
-
-
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - self.opt.lambda_dssim) * Ll1 + self.opt.lambda_dssim * (1.0 - ssim(image, gt_image))
-        
-        rigid_warmup = 3_000
-        rigid = False
-        if rigid and self.iteration > rigid_warmup and 0 < fid < 1 and self.iteration > self.opt.warm_up:
-            time_input = time_input - time_interval
-            xyz_t0, _, _ = self.deform.step(self.gaussians.get_xyz.detach(), time_input + ast_noise)
 
-            rigid_loss = rigidity_loss(xyz_t0, d_xyz)
-            print(rigid_loss)
-            loss += rigid_loss
 
         loss.backward()
 

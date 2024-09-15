@@ -23,6 +23,7 @@ from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
 from utils.regularisation_utils import rigidity_loss
+from sklearn.neighbors import NearestNeighbors
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -30,6 +31,16 @@ try:
     TENSORBOARD_FOUND = True
 except ImportError:
     TENSORBOARD_FOUND = False
+
+
+def rigidity_loss(xyz_t0, d_xyz, neighbor_indices):
+    rel_pos_t0 = xyz_t0[neighbor_indices] - xyz_t0.unsqueeze(1)
+    rel_pos_t1 = (xyz_t0 + d_xyz)[neighbor_indices] - (xyz_t0 + d_xyz).unsqueeze(1)
+    
+    diff = rel_pos_t1 - rel_pos_t0    
+    loss = torch.mean(torch.sum(diff**2, dim=-1))
+    
+    return loss
 
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations):
@@ -87,6 +98,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations):
         if dataset.load2gpu_on_the_fly:
             viewpoint_cam.load2device()
         fid = viewpoint_cam.fid
+        
         if iteration < opt.warm_up:
             d_xyz, d_rotation, d_scaling = 0.0, 0.0, 0.0
         else:
@@ -100,24 +112,25 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations):
         render_pkg_re = render(viewpoint_cam, gaussians, pipe, background, d_xyz, d_rotation, d_scaling, dataset.is_6dof)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg_re["render"], render_pkg_re[
             "viewspace_points"], render_pkg_re["visibility_filter"], render_pkg_re["radii"]
-        # depth = render_pkg_re["depth"]
 
         # Loss
-
-
-
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         
+        with torch.no_grad():
+            nn = NearestNeighbors(n_neighbors=6, algorithm='ball_tree').fit(gaussians.get_xyz.detach().cpu().numpy())
+            _, indices = nn.kneighbors(gaussians.get_xyz.detach().cpu().numpy())
+            neighbor_indices = torch.tensor(indices[:, 1:], device='cuda')
         rigid_warmup = 10_000
         rigid = True
         if rigid and iteration > rigid_warmup and 0 < fid < 1 and iteration > opt.warm_up:
             time_input = time_input - time_interval
             xyz_t0, _, _ = deform.step(gaussians.get_xyz.detach(), time_input + ast_noise)
 
-            rigid_loss = rigidity_loss(xyz_t0, d_xyz)
-            loss += rigid_loss
+            # Compute rigidity loss using 5 nearest neighbors
+            rigid_loss = rigidity_loss(xyz_t0, d_xyz, neighbor_indices)
+            loss += 0.01 * rigid_loss  # You may need to adjust this weight
 
         loss.backward()
 

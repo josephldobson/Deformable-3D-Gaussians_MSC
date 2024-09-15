@@ -58,6 +58,8 @@ class Embedder:
 class DeformNetwork(nn.Module):
     def __init__(self, D=14, W=512, input_ch=3, output_ch=59, multires=10, is_blender=False, is_6dof=False):
         super(DeformNetwork, self).__init__()
+        D = 10
+        W = 512
         self.D = D
         self.W = W
         self.input_ch = input_ch
@@ -98,8 +100,8 @@ class DeformNetwork(nn.Module):
             self.branch_v = nn.Linear(W, 3)
         else:
             self.gaussian_warp = nn.Linear(W, 3)
-        self.gaussian_rotation = nn.Linear(W, 4)
-        self.gaussian_scaling = nn.Linear(W, 3)
+        # self.gaussian_rotation = nn.Linear(W, 4)
+        # self.gaussian_scaling = nn.Linear(W, 3)
 
     def forward(self, x, t):
         t_emb = self.embed_time_fn(t)
@@ -124,7 +126,7 @@ class DeformNetwork(nn.Module):
 
         else:
             d_xyz = self.gaussian_warp(h)
-        scaling = self.gaussian_scaling(h)
-        rotation = self.gaussian_rotation(h)
+        # scaling = self.gaussian_scaling(h)
+        # rotation = self.gaussian_rotation(h)
 
-        return d_xyz, rotation, scaling
+        return d_xyz, 0, 0
