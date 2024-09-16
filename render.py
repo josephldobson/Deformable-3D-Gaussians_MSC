@@ -45,7 +45,7 @@ def render_set(model_path, load2gpu_on_the_fly, is_6dof, name, iteration, views,
         xyz = gaussians.get_xyz
         time_input = fid.unsqueeze(0).expand(xyz.shape[0], -1)
         d_xyz, d_rotation, d_scaling = deform.step(xyz.detach(), time_input)
-        d_rotation = compute_d_quat(xyz.detach(), d_xyz.detach(), 4)
+        d_rotation = compute_d_quat(xyz.detach(), d_xyz.detach(), 7)
         results = render(view, gaussians, pipeline, background, d_xyz, d_rotation, d_scaling, is_6dof)
         rendering = results["render"]
         depth = results["depth"]

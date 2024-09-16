@@ -59,7 +59,7 @@ class DeformNetwork(nn.Module):
     def __init__(self, D=14, W=512, input_ch=3, output_ch=59, multires=10, is_blender=False, is_6dof=False):
         super(DeformNetwork, self).__init__()
         D = 10
-        W = 512
+        W = 768
         self.D = D
         self.W = W
         self.input_ch = input_ch
@@ -100,7 +100,7 @@ class DeformNetwork(nn.Module):
             self.branch_v = nn.Linear(W, 3)
         else:
             self.gaussian_warp = nn.Linear(W, 3)
-        # self.gaussian_rotation = nn.Linear(W, 4)
+        self.gaussian_rotation = nn.Linear(W, 4)
         # self.gaussian_scaling = nn.Linear(W, 3)
 
     def forward(self, x, t):
