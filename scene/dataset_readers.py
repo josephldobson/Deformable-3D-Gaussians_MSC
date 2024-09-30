@@ -18,6 +18,7 @@ from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec
 from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
 import numpy as np
 import json
+import h5py
 import imageio
 from glob import glob
 import cv2 as cv
@@ -26,7 +27,7 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 from utils.camera_utils import camera_nerfies_from_JSON
-
+from scene.tdai_loader import readTDAISceneInfo
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -603,4 +604,5 @@ sceneLoadTypeCallbacks = {
     "DTU": readNeuSDTUInfo,  # DTU dataset used in Tensor4D [https://github.com/DSaurus/Tensor4D]
     "nerfies": readNerfiesInfo,  # NeRFies & HyperNeRF dataset proposed by [https://github.com/google/hypernerf/releases/tag/v0.1]
     "plenopticVideo": readPlenopticVideoDataset,  # Neural 3D dataset in [https://github.com/facebookresearch/Neural_3D_Video]
-}
+    "tdai": readTDAISceneInfo,  # TDAI dataset
+    }
