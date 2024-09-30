@@ -29,7 +29,7 @@ from utils import tdai_cameras as cameras
 from utils.graphics_utils import getWorld2View2
 import json
 from utils.graphics_utils import focal2fov, fov2focal
-
+import cv2
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -699,6 +699,9 @@ def readTDAISceneInfo(args):
             im_data = Image.open(image_path)
             W, H = im_data.size
             image = np.array(im_data) / 255.
+            print(image.shape)
+            # cv2.imshow("image", image)
+            # cv2.waitKey(0)
             HWs.append((H, W))
             images.append(image)
             image_paths.append(image_path)
@@ -723,7 +726,7 @@ def readTDAISceneInfo(args):
             FovX = 2 * np.arctan(scene.image_size_wh[cam_indices[j,i]][1] / (2 * fx))
 
             cam_infos.append(CameraInfo(uid=j * 5 + i, R=R, T=T, FovY=FovY, FovX=FovX,
-                                        image=images[i]*255, 
+                                        image=images[i], 
                                         image_path=image_paths[i], image_name=str(i)+"_"+str(j),
                                         width=HWs[i][1], height=HWs[i][0], fid=timestamp,
                                         pointcloud_camera = None))

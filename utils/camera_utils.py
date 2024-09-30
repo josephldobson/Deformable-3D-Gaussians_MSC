@@ -22,6 +22,7 @@ WARNED = False
 
 def loadCam(args, id, cam_info, resolution_scale):
     orig_w, orig_h = cam_info.width, cam_info.height
+    print(cam_info.image.shape)
 
     if args.resolution in [1, 2, 4, 8]:
         resolution = round(orig_w / (resolution_scale * args.resolution)), round(
@@ -49,15 +50,7 @@ def loadCam(args, id, cam_info, resolution_scale):
         image_rgb = cam_info.image
     image_rgb = torch.from_numpy(image_rgb).float().permute(2, 0, 1)
     gt_image = image_rgb[:3, ...]
-
     loaded_mask = None
-    print("Cam")
-    print(cam_info.R)
-    print(cam_info.T)
-    print(cam_info.FovX)
-    print(cam_info.FovY)
-    print(gt_image)
-    print(cam_info.fid)
 
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T,
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY,
